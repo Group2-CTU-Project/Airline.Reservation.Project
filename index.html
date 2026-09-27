@@ -375,6 +375,26 @@
     border: 1px solid var(--brand); border-radius: 8px; font-size: 0.88rem; color: var(--ink);
   }
 
+  /* Demo-only accounts box on the login panel -- see the HTML comment next
+     to #demoAccountsBox. Gold/dashed so it visually reads as "temporary
+     scaffolding" rather than a normal part of the UI. */
+  .demoAccountsBox {
+    margin-top: 16px; padding: 12px 14px; background: #FFF9EC;
+    border: 1px dashed var(--gold); border-radius: 8px;
+  }
+  .demoAccountsTitle {
+    font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--gold-dark); margin-bottom: 8px;
+  }
+  .demoAccountRow {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 6px 0;
+  }
+  .demoAccountRow + .demoAccountRow { border-top: 1px solid #F5E4BE; }
+  .demoRole { font-size: 0.78rem; font-weight: 800; color: var(--ink); }
+  .demoCreds { font-size: 0.76rem; color: var(--text-soft); font-family: monospace; margin-top: 1px; }
+  .demoFillBtn { flex-shrink: 0; padding: 6px 12px; font-size: 0.78rem; }
+
   /* ---- S1-09: My trips ---- */
   .tripCard {
     border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px;
@@ -877,6 +897,34 @@
               </form>
               <p style="margin:10px 0 0; font-size:0.85rem;"><a href="#" id="forgotPasswordLink">Forgot password?</a></p>
               <div class="error" id="loginError"></div>
+
+              <!-- Demo-only: remove this block before handing the project in
+                   for real use. Lets us log in as any role in front of the
+                   class without fumbling through copy/pasting credentials. -->
+              <div class="demoAccountsBox" id="demoAccountsBox">
+                <div class="demoAccountsTitle">Demo accounts (class presentation)</div>
+                <div class="demoAccountRow" data-email="manager-test@example.com" data-password="Managertest1!">
+                  <div>
+                    <span class="demoRole">Manager</span>
+                    <div class="demoCreds">manager-test@example.com · Managertest1!</div>
+                  </div>
+                  <button type="button" class="btn btn-ghost demoFillBtn">Use</button>
+                </div>
+                <div class="demoAccountRow" data-email="admin-test@example.com" data-password="Admintest1!">
+                  <div>
+                    <span class="demoRole">Admin</span>
+                    <div class="demoCreds">admin-test@example.com · Admintest1!</div>
+                  </div>
+                  <button type="button" class="btn btn-ghost demoFillBtn">Use</button>
+                </div>
+                <div class="demoAccountRow" data-email="customer-test@example.com" data-password="Customertest1!">
+                  <div>
+                    <span class="demoRole">Customer</span>
+                    <div class="demoCreds">customer-test@example.com · Customertest1!</div>
+                  </div>
+                  <button type="button" class="btn btn-ghost demoFillBtn">Use</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2387,6 +2435,17 @@
     }
 
     // ---- Login ----
+    // Demo-only: fill the login form from one of the class-presentation
+    // accounts instead of typing/copy-pasting credentials live. Remove
+    // #demoAccountsBox (see its HTML comment) and this listener together.
+    document.getElementById('demoAccountsBox').addEventListener('click', (e) => {
+      const btn = e.target.closest('.demoFillBtn');
+      if (!btn) return;
+      const row = btn.closest('.demoAccountRow');
+      document.getElementById('loginEmail').value = row.dataset.email;
+      document.getElementById('loginPassword').value = row.dataset.password;
+    });
+
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const errorEl = document.getElementById('loginError');
@@ -3087,6 +3146,10 @@
             ${trip.return_departure_time
               ? `<div class="when">Returning ${new Date(trip.return_departure_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} (${trip.return_origin} → ${trip.return_destination})${trip.return_seat_number ? ` · Seat ${trip.return_seat_number}` : ''}</div>`
               : (trip.return_date ? `<div class="when">Returning ${new Date(`${trip.return_date}T00:00:00`).toLocaleDateString([], { dateStyle: 'medium' })}</div>` : '')}
+            <!-- S2-08/PB-09,10: trip.passenger_email is masked server-side by
+                 get_all_reservations() (20260926010000_s2_08_minimize_pii_
+                 in_reports.sql) -- this is intentional, not a bug. Search by
+                 full email still works; it just isn't echoed back. -->
             <div class="passenger">${trip.passenger_name} · ${trip.passenger_email}</div>
             ${statusKey === 'confirmed' ? `<div class="code">Confirmation #<strong>${confirmationCode}</strong></div>` : ''}
           </div>
