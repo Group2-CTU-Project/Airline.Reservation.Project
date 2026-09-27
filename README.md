@@ -1,47 +1,70 @@
-# Cloud Nine Airline Reservations
+# Authorization tests (S2-08 / PB-09, PB-10)
 
--Site link: https://Group4-CTU-Project.github.io/Airline.Reservation.Project/
+Black-box tests against the live Supabase project: each test signs in as a
+real account of a given role and calls the same RPCs the app calls,
+asserting who is and isn't allowed to. This catches the case where a future
+change accidentally loosens (or over-tightens) a role check on one of the
+management/admin RPCs.
 
-A Sprint 1 demo project for an airline reservation system, built with a static HTML/JS front end and a Supabase backend (Postgres + RPC functions for auth, bookings, payments, and seat selection).
+**Nothing here mutates real data.** Reservation-cancel and role-change calls
+use a made-up id/email that doesn't exist, so we can tell "the role check
+rejected me" apart from "the role check passed and I hit a normal
+not-found error" without ever touching a real reservation or account.
 
-## Structure
+## One-time setup
 
-- `index.html` — the demo app. Open it directly in a browser (no build step). On first load, replace `SUPABASE_URL` and `SUPABASE_ANON_KEY` near the bottom of the file with your own Supabase project's values (Settings → API).
-- `migrations/` — SQL migrations, in the order they should be run, based on their timestamp prefix (`YYYYMMDDHHMMSS_description.sql`). Apply them in order against your Supabase project.
+1. `npm install` (inside this `tests/` folder).
+2. Make sure three real accounts already exist and can log in through the
+   app, with roles already assigned the normal way:
+   - a **customer** account (the default role after signup)
+   - a **manager** account
+   - an **admin** account
 
-## Features
+   If you don't have a manager/admin test account yet, sign up a normal
+   account through the app, then use an existing admin/manager's "Assign a
+   role" panel on the Manager Dashboard to promote it. (For the very first
+   admin account on a fresh project, that has to be set directly in
+   Supabase — same as when the manager role itself was first set up.)
+3. Copy `.env.example` to `.env` and fill in:
+   - `SUPABASE_URL` / `SUPABASE_ANON_KEY` — same values as in `index.html`.
+   - Each test account's email and password.
 
-- Account creation, login with failed-attempt lockout, and role-based content (server-enforced via RPC).
-- Flight search, round-trip booking with automatic return-flight lookup, and seat selection.
-- Payment step with saved payment methods.
-- "My trips" view with e-tickets/receipts and trip cancellation.
+## Running
 
-## Working on this repo
+```
+npm test
+```
 
-To keep history clean and avoid overwriting each other's work:
+Requires Node 20.6+ (uses `node --env-file`). On an older Node, either
+upgrade, or run with the env vars exported another way, e.g.:
 
-1. **Don't upload files directly to `main`.** Create a branch first (or use GitHub's "Create a new branch and start a pull request" option when uploading).
-2. **Open a pull request** for any change, even a small one, so it's easy to see what changed and to review before it lands on `main`.
-3. **Merge through the PR**, not by re-uploading the same file to `main`.
+```
+export $(cat .env | xargs) && node authorization.test.mjs
+```
 
-This avoids duplicate files (like the old `index.html` copies) and lost work sitting only on someone's laptop.
+## What's covered
 
-## How to create a branch (step by step)
+- **Management/reporting RPCs** (`get_all_reservations`,
+  `get_reservation_status_counts`, `get_revenue_summary`,
+  `get_revenue_by_day`, `get_revenue_by_route`): anonymous and customer
+  callers must get "Access denied"; manager and admin must succeed.
+- **`get_admin_audit_log`**: admin-only — manager is asserted to be
+  *denied* here, unlike the RPCs above, matching the S2-07 design (managers
+  see the dashboard but not the audit trail).
+- **`set_user_role_by_email`**: anonymous/customer denied; manager and admin
+  allowed (both can assign roles, per the S2-03 design).
+- **`admin_cancel_reservation`**: admin-only — manager is denied.
+- **`get_my_reservations`**: anonymous gets no rows; a signed-in customer
+  gets their own (empty is fine — this just checks the call succeeds and
+  shapes correctly).
 
-Before making any change — even a small one — create a branch first. Don't upload or edit files directly on `main`.
+## What's *not* covered yet
 
-1. **Go to the repo's main page** and make sure the branch dropdown (top left, next to the repo name) shows `main`. Branches are always created *from* whatever branch you're currently on, so start from `main` unless you have a reason not to.
-2. **Click the branch dropdown.** A search box appears.
-3. **Type a name for your branch.** Use something short that describes the change, like `add-seat-map` or `fix-login-bug` — not your name or the date.
-4. **Click "Create branch: [your branch name] from main."** GitHub creates it and switches you onto it — check that the dropdown now shows your new branch name instead of `main`.
-5. **Make your changes on this branch.** Edit files, upload files, or use "Add file → Upload files" as normal — anything you do now happens on your branch, not on `main`, so `main` stays untouched.
-   - **To edit an existing file's code:** double-check the branch dropdown still shows your branch (not `main`), then click into the file you want to change. Click the pencil (✏️) icon in the top right of the file view to open the editor.
-   - Make your changes directly in the editor. GitHub highlights lines you've changed in green (added) and red (removed) in a preview tab, so you can double check what you actually changed before committing.
-   - Scroll to the bottom. Under "Commit changes," write a short message describing what you changed (e.g. "Add password reset flow").
-   - Make sure **"Commit directly to the `[your branch name]` branch"** is selected — not `main`. This option only appears if you're on a branch other than `main`, which is another reason step 1 matters.
-   - Click **"Commit changes."** This saves your edit to the branch only; `main` still has the old version until you merge.
-6. **When you're ready, open a pull request.** Go to the "Pull requests" tab → "New pull request." Set `base: main` and `compare: [your branch name]`, then click "Create pull request."
-7. **Review the changes, then merge.** Once you (or your teammate) have looked over the diff and it looks right, click "Merge pull request," then confirm.
-8. **Delete the branch after merging** (GitHub will offer a button for this right after the merge). Its work is now safely part of `main`, so the branch has done its job.
-
-**If you're uploading a file** (via "Add file → Upload files") instead of editing in the browser: after choosing your file(s), scroll down to the commit box at the bottom. There's an option there to **"Create a new branch for this commit and start a pull request."** Selecting that does steps 1–6 above automatically in one motion — it's the fastest way to avoid uploading straight to `main` by accident.
+This suite only tests the role-gated management/admin RPCs — the layer this
+sprint's PII-minimization work touches. It does **not** yet test
+cross-customer ownership boundaries (e.g. "can customer A cancel customer
+B's reservation?"), because that needs two real customer accounts that each
+already have a known reservation, which isn't something this suite sets up
+on its own. If you want to extend it: sign in as a second customer, note
+one of their real reservation ids, then assert that the *first* customer's
+`cancel_reservation`/`rebook_reservation` call against that id fails.

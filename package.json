@@ -1,0 +1,13 @@
+{
+  "name": "cloud-nine-authorization-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "S2-08 (PB-09/PB-10) authorization tests for the Cloud Nine Airline Reservations Supabase backend.",
+  "type": "module",
+  "scripts": {
+    "test": "node --env-file=.env authorization.test.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2"
+  }
+}
