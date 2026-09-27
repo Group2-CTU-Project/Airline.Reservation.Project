@@ -3592,7 +3592,16 @@
       listEl.innerHTML = '<div class="tripsLoading">Finding other flights…</div>';
       document.getElementById('rebookModal').classList.remove('hidden');
 
-      const { data, error } = await supabaseClient.rpc('get_alternate_flights', { p_reservation_id: trip.reservation_id });
+      let data, error;
+      try {
+        ({ data, error } = await supabaseClient.rpc('get_alternate_flights', { p_reservation_id: trip.reservation_id }));
+      } catch (networkErr) {
+        if (rebookTrip !== trip) return; // closed or reopened while loading
+        listEl.innerHTML = '';
+        document.getElementById('rebookError').textContent = 'Could not reach the server. Check your connection and try again.';
+        console.error(networkErr);
+        return;
+      }
       if (rebookTrip !== trip) return; // closed or reopened while loading
       if (error) {
         listEl.innerHTML = '';
@@ -3653,10 +3662,19 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Changing…';
 
-      const { data, error } = await supabaseClient.rpc('rebook_reservation', {
-        p_reservation_id: trip.reservation_id,
-        p_new_flight_id: rebookSelectedFlightId,
-      });
+      let data, error;
+      try {
+        ({ data, error } = await supabaseClient.rpc('rebook_reservation', {
+          p_reservation_id: trip.reservation_id,
+          p_new_flight_id: rebookSelectedFlightId,
+        }));
+      } catch (networkErr) {
+        errorEl.textContent = 'Could not reach the server. Check your connection and try again.';
+        console.error(networkErr);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Change flight';
+        return;
+      }
       if (error) {
         // e.g. the last seat was taken a moment ago -- server messages are user-readable
         errorEl.textContent = error.message || 'Could not change your flight. Please try again.';
@@ -3767,10 +3785,19 @@
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Cancelling…';
-      const { error } = await supabaseClient.rpc('admin_cancel_reservation', {
-        p_reservation_id: adminCancelTarget.reservation_id,
-        p_reason: reason,
-      });
+      let error;
+      try {
+        ({ error } = await supabaseClient.rpc('admin_cancel_reservation', {
+          p_reservation_id: adminCancelTarget.reservation_id,
+          p_reason: reason,
+        }));
+      } catch (networkErr) {
+        errorEl.textContent = 'Could not reach the server. Check your connection and try again.';
+        console.error(networkErr);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Cancel booking';
+        return;
+      }
       if (error) {
         // Server messages here are written for people (e.g. "Only pending or
         // confirmed reservations can be cancelled"), so show them as-is.
@@ -3815,11 +3842,19 @@
       bodyEl.innerHTML = '<tr><td colspan="5" class="tripsLoading">Loading audit log…</td></tr>';
       paginationEl.classList.add('hidden');
 
-      const { data, error } = await supabaseClient.rpc('get_admin_audit_log', {
-        p_action: document.getElementById('auditActionFilter').value || null,
-        p_limit: AUDIT_PAGE_SIZE,
-        p_offset: auditOffset,
-      });
+      let data, error;
+      try {
+        ({ data, error } = await supabaseClient.rpc('get_admin_audit_log', {
+          p_action: document.getElementById('auditActionFilter').value || null,
+          p_limit: AUDIT_PAGE_SIZE,
+          p_offset: auditOffset,
+        }));
+      } catch (networkErr) {
+        bodyEl.innerHTML = '';
+        errorEl.textContent = 'Could not reach the server. Check your connection and try again.';
+        console.error(networkErr);
+        return;
+      }
       if (error) {
         bodyEl.innerHTML = '';
         errorEl.textContent = 'Could not load the audit log. Refresh to try again.';
@@ -3886,7 +3921,14 @@
 
     async function refreshPaymentOnFile() {
       const el = document.getElementById('paymentOnFile');
-      const { data, error } = await supabaseClient.rpc('get_payment_method_display');
+      let data, error;
+      try {
+        ({ data, error } = await supabaseClient.rpc('get_payment_method_display'));
+      } catch (networkErr) {
+        console.error(networkErr);
+        el.classList.add('hidden');
+        return;
+      }
       const row = Array.isArray(data) ? data[0] : data;
       if (error || !row) {
         el.classList.add('hidden');
