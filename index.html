@@ -2887,7 +2887,7 @@
             ${trip.return_departure_time
               ? `<div class="when">Returning ${new Date(trip.return_departure_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} (${trip.return_origin} → ${trip.return_destination})${trip.return_seat_number ? ` · Seat ${trip.return_seat_number}` : ''}</div>`
               : (trip.return_date ? `<div class="when">Returning ${new Date(`${trip.return_date}T00:00:00`).toLocaleDateString([], { dateStyle: 'medium' })}</div>` : '')}
-            <div class="passenger">${trip.passenger_name}</div>
+            <div class="passenger">${escapeHtml(trip.passenger_name)}</div>
             ${statusKey === 'confirmed' ? `<div class="code">Confirmation #<strong>${confirmationCode}</strong></div>` : ''}
           </div>
           <div class="right">
@@ -2999,7 +2999,7 @@
         <div class="ticketBody">
           <div class="passengerRow">
             <div class="label">Passenger</div>
-            <div class="value">${ticket.passengerName}</div>
+            <div class="value">${escapeHtml(ticket.passengerName)}</div>
           </div>
 
           <div class="legBlock">
@@ -3150,7 +3150,7 @@
                  get_all_reservations() (20260926010000_s2_08_minimize_pii_
                  in_reports.sql) -- this is intentional, not a bug. Search by
                  full email still works; it just isn't echoed back. -->
-            <div class="passenger">${trip.passenger_name} · ${trip.passenger_email}</div>
+            <div class="passenger">${escapeHtml(trip.passenger_name)} · ${escapeHtml(trip.passenger_email)}</div>
             ${statusKey === 'confirmed' ? `<div class="code">Confirmation #<strong>${confirmationCode}</strong></div>` : ''}
           </div>
           <div class="right">
