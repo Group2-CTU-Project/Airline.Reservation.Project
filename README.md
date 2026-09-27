@@ -1,6 +1,6 @@
 # Cloud Nine Airline Reservations
 
--Site link: https://Group4-CTU-Project.github.io/Airline.Reservation.Project/
+-Site link: https://Group2-CTU-Project.github.io/Airline.Reservation.Project/
 
 A Sprint 1 demo project for an airline reservation system, built with a static HTML/JS front end and a Supabase backend (Postgres + RPC functions for auth, bookings, payments, and seat selection).
 
