@@ -1101,6 +1101,22 @@
           <div class="success" id="mgrRoleSuccess"></div>
         </div>
 
+        <!-- S2-05 / PB-12: real cancellation-email delivery through Resend -->
+        <div class="panel panel-accent" id="mgrEmailPanel" style="margin-top:20px; --panel-accent-color:var(--chart-cancellations);">
+          <div class="sectionHead" style="margin-bottom:12px;">
+            <h3 style="margin:0;">Cancellation emails</h3>
+            <p style="margin:4px 0 0; font-size:0.85rem;" id="mgrEmailModeText">When a reservation is cancelled, the passenger's email waits here until it's sent.</p>
+          </div>
+          <div class="statTiles" id="mgrEmailStatTiles"></div>
+          <div class="managerFilterActions" style="margin-top:14px;">
+            <button type="button" id="mgrEmailSendBtn" class="btn btn-primary">Send queued emails</button>
+            <button type="button" id="mgrEmailRefreshBtn" class="btn btn-ghost">Refresh</button>
+          </div>
+          <div class="hint" id="mgrEmailLastFailure" style="margin-top:8px;"></div>
+          <div class="error" id="mgrEmailError"></div>
+          <div class="success" id="mgrEmailSuccess"></div>
+        </div>
+
         <div class="panel panel-accent" style="margin-top:20px; --panel-accent-color:var(--ink);">
           <h3 style="margin:0;">Filter reservations</h3>
           <form id="managerFilterForm" class="managerFilterGrid" style="margin-top:16px;">
@@ -3303,6 +3319,7 @@
     async function loadManagerDashboard() {
       const tasks = [loadManagerStatTiles(), loadManagerReservations()];
       if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadRevenueDashboard());
+      if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadEmailQueue());
       if (currentUserRole === 'admin') tasks.push(loadAuditLog());
       await Promise.all(tasks);
     }
@@ -3886,9 +3903,89 @@
         return;
       }
       closeAdminCancelModal();
-      const tasks = [loadManagerStatTiles(), loadManagerReservations(), loadAuditLog()];
+      const tasks = [loadManagerStatTiles(), loadManagerReservations(), loadAuditLog(), loadEmailQueue()];
       if (!document.getElementById('mgrRevenuePanel').classList.contains('hidden')) tasks.push(loadRevenueDashboard());
       await Promise.all(tasks);
+    });
+
+    // -----------------------------------------------------------------------
+    // S2-05 / PB-12: cancellation-email queue. Counts come from
+    // get_notification_queue_summary() (admin/manager only, see
+    // 20260930000000_notification_queue_summary.sql). "Send queued emails"
+    // calls the send-cancellation-notifications Edge Function, which holds the
+    // Resend API key server-side and re-checks the caller's role itself.
+    // -----------------------------------------------------------------------
+    async function loadEmailQueue() {
+      const tilesEl = document.getElementById('mgrEmailStatTiles');
+      const modeEl = document.getElementById('mgrEmailModeText');
+      const failEl = document.getElementById('mgrEmailLastFailure');
+      const sendBtn = document.getElementById('mgrEmailSendBtn');
+      const { data, error } = await supabaseClient.rpc('get_notification_queue_summary');
+      if (error) {
+        console.error('get_notification_queue_summary failed:', error);
+        tilesEl.innerHTML = '';
+        return;
+      }
+      const row = (data && data[0]) || { queued_count: 0, failed_count: 0, sent_count: 0, real_delivery: false, last_failure: null };
+      const tiles = [
+        ['pending', Number(row.queued_count), 'Waiting to send'],
+        ['payment_failed', Number(row.failed_count), 'Failed'],
+        ['confirmed', Number(row.sent_count), 'Sent'],
+      ];
+      tilesEl.innerHTML = tiles.map(([cls, n, label]) => `
+        <div class="statTile ${cls}">
+          <div class="statNum">${n}</div>
+          <div class="statLabel">${label}</div>
+        </div>
+      `).join('');
+      modeEl.textContent = row.real_delivery
+        ? "When a reservation is cancelled, the passenger's email waits here until you send it."
+        : 'Real email delivery is off, so cancellation emails are marked sent without leaving the system.';
+      sendBtn.disabled = !row.real_delivery || (Number(row.queued_count) + Number(row.failed_count)) === 0;
+      failEl.textContent = row.last_failure ? `Most recent failure: ${row.last_failure}` : '';
+    }
+
+    document.getElementById('mgrEmailRefreshBtn').addEventListener('click', () => {
+      document.getElementById('mgrEmailError').textContent = '';
+      document.getElementById('mgrEmailSuccess').textContent = '';
+      loadEmailQueue();
+    });
+
+    document.getElementById('mgrEmailSendBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('mgrEmailSendBtn');
+      const errorEl = document.getElementById('mgrEmailError');
+      const successEl = document.getElementById('mgrEmailSuccess');
+      errorEl.textContent = '';
+      successEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      try {
+        const { data, error } = await supabaseClient.functions.invoke('send-cancellation-notifications', { method: 'POST' });
+        if (error) {
+          let message = error.message || 'Could not send emails.';
+          // Non-2xx responses carry the function's own JSON error message.
+          try {
+            const body = await error.context.json();
+            if (body && body.error) message = body.error;
+          } catch (_) { /* keep the generic message */ }
+          errorEl.textContent = message;
+          console.error(error);
+        } else {
+          const sent = Number(data.sent || 0), failed = Number(data.failed || 0);
+          if (sent === 0 && failed === 0) {
+            successEl.textContent = 'No emails were waiting.';
+          } else {
+            successEl.textContent = `Sent ${sent} email${sent === 1 ? '' : 's'}.` +
+              (failed ? ` ${failed} failed; see the reason below.` : '');
+          }
+          if (failed && data.errors && data.errors.length) {
+            errorEl.textContent = data.errors.join('\n');
+          }
+        }
+      } finally {
+        btn.textContent = 'Send queued emails';
+        await loadEmailQueue();
+      }
     });
 
     const AUDIT_PAGE_SIZE = 15;
