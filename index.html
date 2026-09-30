@@ -208,7 +208,19 @@
     .heroBg { animation: none; }
     .heroInner > * { animation: none; opacity: 1; transform: none; }
   }
-  .eyebrow-free { font-size: 0.82rem; color: var(--gold); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 12px; }
+  /* Accessibility fix: this sits over a live photo + gradient overlay that's
+     weakest right at the top of the hero (where this label lands), so a flat
+     color alone measured well under WCAG AA against the actual rendered
+     background (~1:1 -- verified by rendering the page and sampling pixels,
+     not just checking the color against a flat swatch). A dark halo via
+     text-shadow keeps it readable regardless of what the underlying photo's
+     brightness happens to be, the same way the white headline below it
+     ought to but currently doesn't. */
+  .eyebrow-free {
+    font-size: 0.82rem; color: var(--gold); font-weight: 800; letter-spacing: 0.1em;
+    text-transform: uppercase; margin: 0 0 12px;
+    text-shadow: 0 1px 2px rgba(6,22,41,0.85), 0 0 10px rgba(6,22,41,0.55);
+  }
   .heroHeadline { font-size: 2.9rem; line-height: 1.12; margin: 0 0 14px; color: #fff; }
   .heroSub { font-family: 'Nunito', sans-serif; font-size: 1.08rem; font-weight: 600; color: rgba(255,255,255,0.88); max-width: 540px; margin: 0 auto 28px; line-height: 1.6; }
 
@@ -1186,10 +1198,10 @@
 
   <div id="chartTooltip" class="chartTooltip"></div>
 
-  <div id="bookingModal" class="modalOverlay hidden">
+  <div id="bookingModal" class="modalOverlay hidden" role="dialog" aria-modal="true" aria-labelledby="bookingModalTitle">
     <div class="modalCard">
       <button type="button" id="bookingClose" class="modalClose" aria-label="Close">&times;</button>
-      <h2 style="margin:0 0 4px;">Confirm your booking</h2>
+      <h2 id="bookingModalTitle" style="margin:0 0 4px;">Confirm your booking</h2>
       <p style="margin:0; color:var(--text-soft); font-size:0.9rem;">Review the details, then confirm to hold your reservation.</p>
 
       <div class="bookingSummary" id="bookingSummary"></div>
@@ -1265,7 +1277,7 @@
     </div>
   </div>
 
-  <div id="ticketModal" class="modalOverlay hidden">
+  <div id="ticketModal" class="modalOverlay hidden" role="dialog" aria-modal="true" aria-label="E-ticket and receipt">
     <div class="modalCard">
       <button type="button" id="ticketClose" class="modalClose" aria-label="Close">&times;</button>
       <div class="ticket" id="ticketContent"></div>
@@ -1316,7 +1328,7 @@
     </div>
   </div>
 
-  <div id="resetPasswordModal" class="modalOverlay hidden">
+  <div id="resetPasswordModal" class="modalOverlay hidden" role="dialog" aria-modal="true" aria-label="Password reset">
     <div class="modalCard">
       <button type="button" id="resetPasswordClose" class="modalClose" aria-label="Close">&times;</button>
 
@@ -2887,6 +2899,8 @@
             ${trip.return_departure_time
               ? `<div class="when">Returning ${new Date(trip.return_departure_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} (${trip.return_origin} → ${trip.return_destination})${trip.return_seat_number ? ` · Seat ${trip.return_seat_number}` : ''}</div>`
               : (trip.return_date ? `<div class="when">Returning ${new Date(`${trip.return_date}T00:00:00`).toLocaleDateString([], { dateStyle: 'medium' })}</div>` : '')}
+            ${renderTripFlightLine(trip.flightInfo, trip.returnFlightInfo ? 'Outbound' : '')}
+            ${renderTripFlightLine(trip.returnFlightInfo, 'Return')}
             <div class="passenger">${escapeHtml(trip.passenger_name)}</div>
             ${statusKey === 'confirmed' ? `<div class="code">Confirmation #<strong>${confirmationCode}</strong></div>` : ''}
           </div>
@@ -2934,8 +2948,69 @@
         return;
       }
 
+      // Flight number + live status per trip: get_my_reservations() returns
+      // route/time info but not flight_number (that column was added later,
+      // in 20260922000000_add_flight_status_lookup.sql, and this RPC's
+      // source isn't in this checkout to extend). flights is already
+      // public-select with no RLS wrapper needed (same as the home-page
+      // search and the status lookup), so a second batched query fills the
+      // gap client-side instead of touching an RPC we can't fully verify.
+      const cols = FLIGHTS_CONFIG.columns;
+      const flightIds = [...new Set(
+        trips.flatMap((t) => [t.flight_id, t.return_flight_id]).filter(Boolean)
+      )];
+      let flightInfoById = {};
+      if (flightIds.length) {
+        const { data: flightRows, error: flightsError } = await supabaseClient
+          .from(FLIGHTS_CONFIG.table)
+          .select(`${cols.id}, ${cols.flightNumber}, ${cols.status}`)
+          .in(cols.id, flightIds);
+        if (flightsError) {
+          // Non-fatal: trips still render, just without flight numbers/status.
+          console.error(flightsError);
+        } else {
+          flightInfoById = Object.fromEntries(
+            (flightRows || []).map((f) => [f[cols.id], f])
+          );
+        }
+      }
+      trips.forEach((t) => {
+        t.flightInfo = t.flight_id ? flightInfoById[t.flight_id] : null;
+        t.returnFlightInfo = t.return_flight_id ? flightInfoById[t.return_flight_id] : null;
+      });
+
       listEl.innerHTML = trips.map(renderTripCard).join('');
     }
+
+    // Small pill + flight-number link, reused for a trip's outbound and
+    // return legs on the My Trips page. Clicking it jumps to the Flight
+    // status page and runs the same live lookup the status board does.
+    function renderTripFlightLine(info, legLabel) {
+      if (!info || !info[FLIGHTS_CONFIG.columns.flightNumber]) return '';
+      const cols = FLIGHTS_CONFIG.columns;
+      const flightNumber = info[cols.flightNumber];
+      const statusKey = String(info[cols.status] || 'scheduled').toLowerCase();
+      const statusLabel = FLIGHT_STATUS_LABELS[statusKey] || (info[cols.status] || 'Unknown');
+      const pillClass = FLIGHT_STATUS_LABELS[statusKey] ? `flight-${statusKey}` : 'flight-unknown';
+      return `
+        <div class="hint" style="margin-top:4px;">
+          ${legLabel ? `${legLabel} · ` : ''}<button type="button" class="tripFlightLink" data-flight-number="${escapeHtml(flightNumber)}" style="background:none; border:none; padding:0; font:inherit; color:var(--brand); font-weight:700; text-decoration:underline; cursor:pointer;">${escapeHtml(flightNumber)}</button>
+          · <span class="statusPill ${pillClass}" style="font-size:0.7rem; padding:2px 8px;">${escapeHtml(statusLabel)}</span>
+        </div>
+      `;
+    }
+
+    // Delegated so it works for every trip card without a per-card listener;
+    // My Trips re-renders its whole list on every load/cancel/rebook anyway.
+    document.getElementById('myTripsList').addEventListener('click', (e) => {
+      const btn = e.target.closest('.tripFlightLink');
+      if (!btn) return;
+      const flightNumber = btn.dataset.flightNumber;
+      showPage('status');
+      document.getElementById('statusFlightNumber').value = flightNumber;
+      lookupFlightStatus(flightNumber);
+      document.getElementById('statusLookupResult').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
 
     // -----------------------------------------------------------------------
     // S1-09: Ticket / receipt — generated after approved payment, and
@@ -2955,6 +3030,7 @@
           departureTime: trip.departure_time,
           arrivalTime: trip.arrival_time,
           seatNumber: trip.seat_number,
+          flightNumber: trip.flightInfo && trip.flightInfo[FLIGHTS_CONFIG.columns.flightNumber],
         },
         returnLeg: trip.return_departure_time ? {
           origin: trip.return_origin,
@@ -2962,6 +3038,7 @@
           departureTime: trip.return_departure_time,
           arrivalTime: trip.return_arrival_time,
           seatNumber: trip.return_seat_number,
+          flightNumber: trip.returnFlightInfo && trip.returnFlightInfo[FLIGHTS_CONFIG.columns.flightNumber],
         } : null,
       };
     }
@@ -2972,10 +3049,11 @@
       const outboundArr = new Date(ticket.outbound.arrivalTime);
 
       const seatLine = (seatNumber) => seatNumber ? ` · Seat ${seatNumber}` : '';
+      const flightLine = (flightNumber) => flightNumber ? ` · Flight ${escapeHtml(flightNumber)}` : '';
 
       const returnBlock = ticket.returnLeg ? `
         <div class="legBlock">
-          <div class="legLabel">Return</div>
+          <div class="legLabel">Return${flightLine(ticket.returnLeg.flightNumber)}</div>
           <div class="route">${ticket.returnLeg.origin} → ${ticket.returnLeg.destination}</div>
           <div class="when">Depart ${fmt(new Date(ticket.returnLeg.departureTime))} · Arrive ${fmt(new Date(ticket.returnLeg.arrivalTime))}${seatLine(ticket.returnLeg.seatNumber)}</div>
         </div>
@@ -3003,7 +3081,7 @@
           </div>
 
           <div class="legBlock">
-            <div class="legLabel">${ticket.returnLeg ? 'Outbound' : 'Flight'}</div>
+            <div class="legLabel">${ticket.returnLeg ? 'Outbound' : 'Flight'}${flightLine(ticket.outbound.flightNumber)}</div>
             <div class="route">${ticket.outbound.origin} → ${ticket.outbound.destination}</div>
             <div class="when">Depart ${fmt(outboundDep)} · Arrive ${fmt(outboundArr)}${seatLine(ticket.outbound.seatNumber)}</div>
           </div>
