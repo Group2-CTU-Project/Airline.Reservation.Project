@@ -517,6 +517,20 @@
   .routesTable th { color: var(--text-soft); font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
   .routesTable td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
+  /* ---- Manager dashboard sub-tabs (Reservations / Sales / Audit / Accounts) ---- */
+  .mgrTabs {
+    display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+    margin: 20px 0 24px; flex-wrap: wrap;
+  }
+  .mgrTabBtn {
+    border: none; background: transparent; cursor: pointer; font-family: 'Nunito', sans-serif;
+    font-weight: 700; font-size: 0.9rem; color: var(--text-soft); padding: 10px 6px;
+    border-bottom: 3px solid transparent; margin: 0 10px -1px 0;
+  }
+  .mgrTabBtn:hover { color: var(--ink); }
+  .mgrTabBtn.active { color: var(--brand); border-bottom-color: var(--brand); }
+  .mgrTabPanel.hidden { display: none; }
+
   .managerFilterGrid {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 16px; align-items: end;
   }
@@ -584,6 +598,14 @@
     margin-top: 12px; padding: 12px 14px; border-radius: 8px; font-size: 0.88rem;
     background: #E6F7EE; border: 1px solid #B8E6CC; color: var(--ink);
   }
+
+  /* ---- Cancellation details modal ---- */
+  .cancellationNotice {
+    margin-top: 14px; padding: 14px 16px; border-radius: 8px; font-size: 0.9rem;
+    background: #EEF0F3; border: 1px solid #D7DCE3; color: var(--ink); line-height: 1.5;
+  }
+  .cancellationNotice .notifMeta { font-size: 0.78rem; color: var(--text-soft); margin-top: 8px; }
+  .cancellationNotice.failed { background: #FDEDEC; border-color: #F3C6C4; }
 
   footer { padding: 32px 0 48px; text-align: center; color: var(--text-soft); font-size: 0.82rem; }
 
@@ -1018,188 +1040,208 @@
           <p>Track and filter every reservation across all customers.</p>
         </div>
 
-        <div class="statTiles" id="managerStatTiles"></div>
+        <div class="mgrTabs" id="mgrTabs">
+          <button type="button" class="mgrTabBtn active" id="mgrTabBtnReservations" data-tab="reservations">Reservations</button>
+          <button type="button" class="mgrTabBtn hidden" id="mgrTabBtnSales" data-tab="sales">Sales</button>
+          <button type="button" class="mgrTabBtn hidden" id="mgrTabBtnAudit" data-tab="audit">Audit</button>
+          <button type="button" class="mgrTabBtn hidden" id="mgrTabBtnAccounts" data-tab="accounts">Accounts</button>
+        </div>
 
-        <div class="panel panel-accent hidden" id="mgrRevenuePanel" style="margin-top:20px; --panel-accent-color:var(--chart-revenue);">
-          <div class="sectionHead" style="margin-bottom:12px;">
-            <h3 style="margin:0;">Sales &amp; cancellations</h3>
-            <p style="margin:4px 0 0; font-size:0.85rem;">Revenue and booking counts are by the day a reservation was booked; cancellations are by the day it was cancelled.</p>
+        <!-- ---- Reservations tab: status tiles, cancellation emails, filters, results ---- -->
+        <div class="mgrTabPanel" id="mgrTabPanelReservations">
+          <div class="statTiles" id="managerStatTiles"></div>
+
+          <!-- S2-05 / PB-12: real cancellation-email delivery through Resend -->
+          <div class="panel panel-accent" id="mgrEmailPanel" style="margin-top:20px; --panel-accent-color:var(--chart-cancellations);">
+            <div class="sectionHead" style="margin-bottom:12px;">
+              <h3 style="margin:0;">Cancellation emails</h3>
+              <p style="margin:4px 0 0; font-size:0.85rem;" id="mgrEmailModeText">When a reservation is cancelled, the passenger's email waits here until it's sent.</p>
+            </div>
+            <div class="statTiles" id="mgrEmailStatTiles"></div>
+            <div class="managerFilterActions" style="margin-top:14px;">
+              <button type="button" id="mgrEmailSendBtn" class="btn btn-primary">Send queued emails</button>
+              <button type="button" id="mgrEmailRefreshBtn" class="btn btn-ghost">Refresh</button>
+            </div>
+            <div class="hint" id="mgrEmailLastFailure" style="margin-top:8px;"></div>
+            <div class="error" id="mgrEmailError"></div>
+            <div class="success" id="mgrEmailSuccess"></div>
           </div>
 
-          <form id="mgrRevenueFilterForm" class="managerFilterGrid" style="margin-bottom:20px;">
-            <div>
-              <label for="mgrRevDateFrom">From</label>
-              <input type="date" id="mgrRevDateFrom" required />
-            </div>
-            <div>
-              <label for="mgrRevDateTo">To</label>
-              <input type="date" id="mgrRevDateTo" required />
-            </div>
-            <div class="managerFilterActions">
-              <button type="submit" id="mgrRevApplyBtn" class="btn btn-primary">Apply</button>
-              <button type="button" id="mgrRevResetBtn" class="btn btn-ghost">Last 30 days</button>
-            </div>
-          </form>
+          <div class="panel panel-accent" style="margin-top:20px; --panel-accent-color:var(--ink);">
+            <h3 style="margin:0;">Filter reservations</h3>
+            <form id="managerFilterForm" class="managerFilterGrid" style="margin-top:16px;">
+              <div>
+                <label for="mgrFilterStatus">Status</label>
+                <select id="mgrFilterStatus">
+                  <option value="">All statuses</option>
+                  <option value="pending">Pending payment</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="payment_failed">Payment failed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div>
+                <label for="mgrFilterOrigin">Origin</label>
+                <input type="text" id="mgrFilterOrigin" placeholder="JFK" />
+              </div>
+              <div>
+                <label for="mgrFilterDestination">Destination</label>
+                <input type="text" id="mgrFilterDestination" placeholder="LAX" />
+              </div>
+              <div>
+                <label for="mgrFilterDateFrom">Departs on/after</label>
+                <input type="date" id="mgrFilterDateFrom" />
+              </div>
+              <div>
+                <label for="mgrFilterDateTo">Departs on/before</label>
+                <input type="date" id="mgrFilterDateTo" />
+              </div>
+              <div>
+                <label for="mgrFilterSearch">Search passenger name or email</label>
+                <input type="text" id="mgrFilterSearch" placeholder="Jane Doe or jane@email.com" />
+              </div>
+              <div class="managerFilterActions">
+                <button type="submit" id="mgrApplyBtn" class="btn btn-primary">Apply filters</button>
+                <button type="button" id="mgrShowBtn" class="btn btn-ghost">Show reservations</button>
+                <button type="button" id="mgrClearBtn" class="btn btn-ghost">Clear results</button>
+                <button type="button" id="mgrResetBtn" class="btn btn-ghost">Reset</button>
+              </div>
+            </form>
+          </div>
 
-          <div class="statTiles" id="mgrRevenueStatTiles"></div>
+          <div style="margin-top:20px;">
+            <div class="managerResultsHead">
+              <span id="managerResultsCount" class="hint"></span>
+            </div>
+            <div id="managerReservationsList"></div>
+            <div class="error" id="managerError"></div>
+            <div class="managerPagination hidden" id="managerPagination">
+              <button type="button" id="mgrPrevBtn" class="btn btn-ghost">Previous</button>
+              <span class="pageInfo" id="managerPageInfo"></span>
+              <button type="button" id="mgrNextBtn" class="btn btn-ghost">Next</button>
+            </div>
+          </div>
+        </div>
 
-          <div class="chartRow">
-            <div class="chartCard">
-              <div class="chartAccent" style="background:var(--chart-revenue);"></div>
-              <div class="chartCardBody">
-              <h4>Daily revenue</h4>
-              <p class="hint">Confirmed bookings only.</p>
-              <div class="chartSvgWrap" id="mgrRevenueChart"></div>
+        <!-- ---- Sales tab: revenue/bookings/cancellations reporting (admin + manager) ---- -->
+        <div class="mgrTabPanel hidden" id="mgrTabPanelSales">
+          <div class="panel panel-accent" id="mgrRevenuePanel" style="--panel-accent-color:var(--chart-revenue);">
+            <div class="sectionHead" style="margin-bottom:12px;">
+              <h3 style="margin:0;">Sales &amp; cancellations</h3>
+              <p style="margin:4px 0 0; font-size:0.85rem;">Revenue and booking counts are by the day a reservation was booked; cancellations are by the day it was cancelled.</p>
+            </div>
+
+            <form id="mgrRevenueFilterForm" class="managerFilterGrid" style="margin-bottom:20px;">
+              <div>
+                <label for="mgrRevDateFrom">From</label>
+                <input type="date" id="mgrRevDateFrom" required />
+              </div>
+              <div>
+                <label for="mgrRevDateTo">To</label>
+                <input type="date" id="mgrRevDateTo" required />
+              </div>
+              <div class="managerFilterActions">
+                <button type="submit" id="mgrRevApplyBtn" class="btn btn-primary">Apply</button>
+                <button type="button" id="mgrRevResetBtn" class="btn btn-ghost">Last 30 days</button>
+              </div>
+            </form>
+
+            <div class="statTiles" id="mgrRevenueStatTiles"></div>
+
+            <div class="chartRow">
+              <div class="chartCard">
+                <div class="chartAccent" style="background:var(--chart-revenue);"></div>
+                <div class="chartCardBody">
+                <h4>Daily revenue</h4>
+                <p class="hint">Confirmed bookings only.</p>
+                <div class="chartSvgWrap" id="mgrRevenueChart"></div>
+                </div>
+              </div>
+              <div class="chartCard">
+                <div class="chartAccent" style="background:linear-gradient(90deg, var(--chart-bookings) 0 50%, var(--chart-cancellations) 50% 100%);"></div>
+                <div class="chartCardBody">
+                <h4>Bookings vs. cancellations</h4>
+                <div class="chartLegend">
+                  <span><i style="background:var(--chart-bookings)"></i>Bookings</span>
+                  <span><i style="background:var(--chart-cancellations)"></i>Cancellations</span>
+                </div>
+                <div class="chartSvgWrap" id="mgrBookingsChart"></div>
+                </div>
               </div>
             </div>
-            <div class="chartCard">
-              <div class="chartAccent" style="background:linear-gradient(90deg, var(--chart-bookings) 0 50%, var(--chart-cancellations) 50% 100%);"></div>
-              <div class="chartCardBody">
-              <h4>Bookings vs. cancellations</h4>
-              <div class="chartLegend">
-                <span><i style="background:var(--chart-bookings)"></i>Bookings</span>
-                <span><i style="background:var(--chart-cancellations)"></i>Cancellations</span>
+
+            <div class="panel panel-accent" style="margin-top:18px; --panel-accent-color:var(--brand);">
+              <h4 style="margin:0 0 10px;">Top routes by revenue</h4>
+              <div id="mgrTopRoutes"></div>
+            </div>
+
+            <div class="error" id="mgrRevenueError"></div>
+          </div>
+        </div>
+
+        <!-- ---- Audit tab: admin/manager audit trail. get_admin_audit_log() is
+             role-gated server-side; hiding this panel is just UX. ---- -->
+        <div class="mgrTabPanel hidden" id="mgrTabPanelAudit">
+          <div class="panel panel-accent" id="auditLogPanel" style="--panel-accent-color:#8A0019;">
+            <div class="sectionHead" style="margin-bottom:12px;">
+              <h3 style="margin:0;">Audit log</h3>
+              <p style="margin:4px 0 0; font-size:0.85rem;">Every admin cancellation and role change, newest first. Entries can't be edited or deleted.</p>
+            </div>
+            <div class="auditToolbar">
+              <div>
+                <label for="auditActionFilter">Show</label>
+                <select id="auditActionFilter">
+                  <option value="">All actions</option>
+                  <option value="admin_cancel_reservation">Cancellations</option>
+                  <option value="set_user_role">Role changes</option>
+                </select>
               </div>
-              <div class="chartSvgWrap" id="mgrBookingsChart"></div>
+              <button type="button" id="auditRefreshBtn" class="btn btn-ghost">Refresh</button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="auditTable">
+                <thead>
+                  <tr><th>When</th><th>By</th><th>Action</th><th>Affected</th><th>Details</th></tr>
+                </thead>
+                <tbody id="auditLogBody"></tbody>
+              </table>
+            </div>
+            <div class="error" id="auditLogError"></div>
+            <div class="managerPagination hidden" id="auditPagination">
+              <button type="button" id="auditPrevBtn" class="btn btn-ghost">Previous</button>
+              <span class="pageInfo" id="auditPageInfo"></span>
+              <button type="button" id="auditNextBtn" class="btn btn-ghost">Next</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- Accounts tab: role assignment (manager-only, same as before) ---- -->
+        <div class="mgrTabPanel hidden" id="mgrTabPanelAccounts">
+          <div class="panel panel-accent" id="mgrRolePanel" style="--panel-accent-color:var(--gold-dark);">
+            <div class="sectionHead" style="margin-bottom:12px;">
+              <h3 style="margin:0;">Assign a role</h3>
+              <p style="margin:4px 0 0; font-size:0.85rem;">Look up an account by email and set its role. Use this to give a new hire admin access instead of editing it in Supabase directly. You can't change your own role here.</p>
+            </div>
+            <form id="mgrRoleForm" class="managerFilterGrid">
+              <div>
+                <label for="mgrRoleEmail">Account email</label>
+                <input type="email" id="mgrRoleEmail" placeholder="employee@example.com" required />
               </div>
-            </div>
-          </div>
-
-          <div class="panel panel-accent" style="margin-top:18px; --panel-accent-color:var(--brand);">
-            <h4 style="margin:0 0 10px;">Top routes by revenue</h4>
-            <div id="mgrTopRoutes"></div>
-          </div>
-
-          <div class="error" id="mgrRevenueError"></div>
-        </div>
-
-        <div class="panel panel-accent hidden" id="mgrRolePanel" style="margin-top:20px; --panel-accent-color:var(--gold-dark);">
-          <div class="sectionHead" style="margin-bottom:12px;">
-            <h3 style="margin:0;">Assign a role</h3>
-            <p style="margin:4px 0 0; font-size:0.85rem;">Look up an account by email and set its role. Use this to give a new hire admin access instead of editing it in Supabase directly. You can't change your own role here.</p>
-          </div>
-          <form id="mgrRoleForm" class="managerFilterGrid">
-            <div>
-              <label for="mgrRoleEmail">Account email</label>
-              <input type="email" id="mgrRoleEmail" placeholder="employee@example.com" required />
-            </div>
-            <div>
-              <label for="mgrRoleSelect">New role</label>
-              <select id="mgrRoleSelect">
-                <option value="customer">Customer</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div class="managerFilterActions">
-              <button type="submit" id="mgrRoleSubmitBtn" class="btn btn-primary">Update role</button>
-            </div>
-          </form>
-          <div class="hint" id="mgrRoleFound" style="margin-top:8px;"></div>
-          <div class="error" id="mgrRoleError"></div>
-          <div class="success" id="mgrRoleSuccess"></div>
-        </div>
-
-        <!-- S2-05 / PB-12: real cancellation-email delivery through Resend -->
-        <div class="panel panel-accent" id="mgrEmailPanel" style="margin-top:20px; --panel-accent-color:var(--chart-cancellations);">
-          <div class="sectionHead" style="margin-bottom:12px;">
-            <h3 style="margin:0;">Cancellation emails</h3>
-            <p style="margin:4px 0 0; font-size:0.85rem;" id="mgrEmailModeText">When a reservation is cancelled, the passenger's email waits here until it's sent.</p>
-          </div>
-          <div class="statTiles" id="mgrEmailStatTiles"></div>
-          <div class="managerFilterActions" style="margin-top:14px;">
-            <button type="button" id="mgrEmailSendBtn" class="btn btn-primary">Send queued emails</button>
-            <button type="button" id="mgrEmailRefreshBtn" class="btn btn-ghost">Refresh</button>
-          </div>
-          <div class="hint" id="mgrEmailLastFailure" style="margin-top:8px;"></div>
-          <div class="error" id="mgrEmailError"></div>
-          <div class="success" id="mgrEmailSuccess"></div>
-        </div>
-
-        <div class="panel panel-accent" style="margin-top:20px; --panel-accent-color:var(--ink);">
-          <h3 style="margin:0;">Filter reservations</h3>
-          <form id="managerFilterForm" class="managerFilterGrid" style="margin-top:16px;">
-            <div>
-              <label for="mgrFilterStatus">Status</label>
-              <select id="mgrFilterStatus">
-                <option value="">All statuses</option>
-                <option value="pending">Pending payment</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="payment_failed">Payment failed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div>
-              <label for="mgrFilterOrigin">Origin</label>
-              <input type="text" id="mgrFilterOrigin" placeholder="JFK" />
-            </div>
-            <div>
-              <label for="mgrFilterDestination">Destination</label>
-              <input type="text" id="mgrFilterDestination" placeholder="LAX" />
-            </div>
-            <div>
-              <label for="mgrFilterDateFrom">Departs on/after</label>
-              <input type="date" id="mgrFilterDateFrom" />
-            </div>
-            <div>
-              <label for="mgrFilterDateTo">Departs on/before</label>
-              <input type="date" id="mgrFilterDateTo" />
-            </div>
-            <div>
-              <label for="mgrFilterSearch">Search passenger name or email</label>
-              <input type="text" id="mgrFilterSearch" placeholder="Jane Doe or jane@email.com" />
-            </div>
-            <div class="managerFilterActions">
-              <button type="submit" id="mgrApplyBtn" class="btn btn-primary">Apply filters</button>
-              <button type="button" id="mgrResetBtn" class="btn btn-ghost">Reset</button>
-            </div>
-          </form>
-        </div>
-
-        <div style="margin-top:20px;">
-          <div class="managerResultsHead">
-            <span id="managerResultsCount" class="hint"></span>
-          </div>
-          <div id="managerReservationsList"></div>
-          <div class="error" id="managerError"></div>
-          <div class="managerPagination hidden" id="managerPagination">
-            <button type="button" id="mgrPrevBtn" class="btn btn-ghost">Previous</button>
-            <span class="pageInfo" id="managerPageInfo"></span>
-            <button type="button" id="mgrNextBtn" class="btn btn-ghost">Next</button>
-          </div>
-        </div>
-
-        <!-- S2-07/PB-14: admin-only audit log. get_admin_audit_log() is
-             admin-gated server-side; hiding this panel is just UX. -->
-        <div class="panel panel-accent hidden" id="auditLogPanel" style="margin-top:28px; --panel-accent-color:#8A0019;">
-          <div class="sectionHead" style="margin-bottom:12px;">
-            <h3 style="margin:0;">Audit log</h3>
-            <p style="margin:4px 0 0; font-size:0.85rem;">Every admin cancellation and role change, newest first. Entries can't be edited or deleted.</p>
-          </div>
-          <div class="auditToolbar">
-            <div>
-              <label for="auditActionFilter">Show</label>
-              <select id="auditActionFilter">
-                <option value="">All actions</option>
-                <option value="admin_cancel_reservation">Cancellations</option>
-                <option value="set_user_role">Role changes</option>
-              </select>
-            </div>
-            <button type="button" id="auditRefreshBtn" class="btn btn-ghost">Refresh</button>
-          </div>
-          <div style="overflow-x:auto;">
-            <table class="auditTable">
-              <thead>
-                <tr><th>When</th><th>By</th><th>Action</th><th>Affected</th><th>Details</th></tr>
-              </thead>
-              <tbody id="auditLogBody"></tbody>
-            </table>
-          </div>
-          <div class="error" id="auditLogError"></div>
-          <div class="managerPagination hidden" id="auditPagination">
-            <button type="button" id="auditPrevBtn" class="btn btn-ghost">Previous</button>
-            <span class="pageInfo" id="auditPageInfo"></span>
-            <button type="button" id="auditNextBtn" class="btn btn-ghost">Next</button>
+              <div>
+                <label for="mgrRoleSelect">New role</label>
+                <select id="mgrRoleSelect">
+                  <option value="customer">Customer</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="managerFilterActions">
+                <button type="submit" id="mgrRoleSubmitBtn" class="btn btn-primary">Update role</button>
+              </div>
+            </form>
+            <div class="hint" id="mgrRoleFound" style="margin-top:8px;"></div>
+            <div class="error" id="mgrRoleError"></div>
+            <div class="success" id="mgrRoleSuccess"></div>
           </div>
         </div>
       </section>
@@ -1297,6 +1339,22 @@
       <button type="button" id="ticketClose" class="modalClose" aria-label="Close">&times;</button>
       <div class="ticket" id="ticketContent"></div>
       <button type="button" id="ticketPrintBtn" class="btn btn-primary btn-block" style="margin-top:16px;">Print / Save as PDF</button>
+    </div>
+  </div>
+
+  <!-- Cancellation details -- shows the passenger the same notification
+       message that was emailed to them for this cancelled trip, pulled
+       live from cancellation_notifications via get_my_cancellation_
+       notifications() (20261002000000_my_cancellation_notifications.sql). -->
+  <div id="cancellationModal" class="modalOverlay hidden" role="dialog" aria-modal="true" aria-labelledby="cancellationModalTitle">
+    <div class="modalCard">
+      <button type="button" id="cancellationClose" class="modalClose" aria-label="Close">&times;</button>
+      <h2 id="cancellationModalTitle" style="margin:0 0 4px;">Cancellation details</h2>
+      <p class="hint" style="margin:0;">What was sent to you about this reservation.</p>
+      <div class="bookingSummary" id="cancellationSummary"></div>
+      <div id="cancellationBody"></div>
+      <div class="error" id="cancellationError"></div>
+      <button type="button" id="cancellationCloseBtn" class="btn btn-primary btn-block" style="margin-top:16px;">Close</button>
     </div>
   </div>
 
@@ -2852,15 +2910,20 @@
       const canSeeRevenuePanel = currentUserRole === 'admin' || currentUserRole === 'manager';
       document.getElementById('navManagerLink').classList.toggle('hidden', !canViewManagerDashboard);
       document.getElementById('managerSectionWrap').classList.toggle('hidden', !canViewManagerDashboard);
-      document.getElementById('mgrRolePanel').classList.toggle('hidden', !canSeeRolePanel);
-      document.getElementById('mgrRevenuePanel').classList.toggle('hidden', !canSeeRevenuePanel);
+      // Manager Dashboard sub-tabs: Reservations is always available to
+      // anyone who can see the dashboard at all; Sales/Audit/Accounts show
+      // or hide their tab button based on the same role flags the panels
+      // themselves used to gate on directly.
+      document.getElementById('mgrTabBtnAccounts').classList.toggle('hidden', !canSeeRolePanel);
+      document.getElementById('mgrTabBtnSales').classList.toggle('hidden', !canSeeRevenuePanel);
       // Audit log: originally admin-only, now admin-or-manager so managers
       // can monitor admin cancellations too (get_admin_audit_log() widened
       // server-side -- see 20260930010000_widen_audit_log_to_manager.sql).
       // Managers still can't cancel a booking themselves (adminCancelBtn
       // stays admin-only in renderManagerReservationCard) -- this only adds
       // read access to the trail of what admins have done.
-      document.getElementById('auditLogPanel').classList.toggle('hidden', !canViewManagerDashboard);
+      document.getElementById('mgrTabBtnAudit').classList.toggle('hidden', !canViewManagerDashboard);
+      if (canViewManagerDashboard) switchMgrTab('reservations');
 
       await refreshPaymentOnFile();
       await loadMyTrips();
@@ -2909,6 +2972,11 @@
       const changeBtn = (statusKey === 'confirmed' && dep > new Date())
         ? `<button type="button" class="btn btn-ghost changeFlightBtn" data-reservation-id="${trip.reservation_id}" style="margin-top:10px; font-size:0.8rem; padding:7px 14px;">Change flight</button>`
         : '';
+      // Cancelled trips get a link to the actual notification that was
+      // emailed about it, pulled live via get_my_cancellation_notifications().
+      const cancellationBtn = statusKey === 'cancelled'
+        ? `<button type="button" class="btn btn-ghost viewCancellationBtn" data-reservation-id="${trip.reservation_id}" style="margin-top:10px; font-size:0.8rem; padding:7px 14px;">View cancellation details</button>`
+        : '';
 
       return `
         <div class="tripCard">
@@ -2919,8 +2987,14 @@
             ${trip.return_departure_time
               ? `<div class="when">Returning ${new Date(trip.return_departure_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} (${trip.return_origin} → ${trip.return_destination})${trip.return_seat_number ? ` · Seat ${trip.return_seat_number}` : ''}</div>`
               : (trip.return_date ? `<div class="when">Returning ${new Date(`${trip.return_date}T00:00:00`).toLocaleDateString([], { dateStyle: 'medium' })}</div>` : '')}
-            ${renderTripFlightLine(trip.flightInfo, trip.returnFlightInfo ? 'Outbound' : '')}
-            ${renderTripFlightLine(trip.returnFlightInfo, 'Return')}
+            <!-- Flight number + live status is hidden on a cancelled trip --
+                 the reservation is cancelled, but the flight itself is
+                 usually still scheduled/departing as normal for other
+                 passengers, and showing "SCHEDULED" next to a cancelled
+                 booking reads as a contradiction/bug rather than what it
+                 actually means. -->
+            ${statusKey !== 'cancelled' ? renderTripFlightLine(trip.flightInfo, trip.returnFlightInfo ? 'Outbound' : '') : ''}
+            ${statusKey !== 'cancelled' ? renderTripFlightLine(trip.returnFlightInfo, 'Return') : ''}
             <div class="passenger">${escapeHtml(trip.passenger_name)}</div>
             ${statusKey === 'confirmed' ? `<div class="code">Confirmation #<strong>${confirmationCode}</strong></div>` : ''}
           </div>
@@ -2930,6 +3004,7 @@
             ${ticketBtn}
             ${changeBtn}
             ${cancelBtn}
+            ${cancellationBtn}
           </div>
         </div>
       `;
@@ -3131,6 +3206,78 @@
     document.getElementById('ticketPrintBtn').addEventListener('click', () => window.print());
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !document.getElementById('ticketModal').classList.contains('hidden')) closeTicketModal();
+      if (e.key === 'Escape' && !document.getElementById('cancellationModal').classList.contains('hidden')) closeCancellationModal();
+    });
+
+    // -----------------------------------------------------------------------
+    // Cancellation details modal -- shows the passenger the real
+    // notification record from cancellation_notifications (the same message
+    // that was emailed to them), fetched via get_my_cancellation_
+    // notifications() so a customer can only ever see their own
+    // (20261002000000_my_cancellation_notifications.sql).
+    // -----------------------------------------------------------------------
+    const NOTIF_STATUS_LABELS = { queued: 'Waiting to send', sent: 'Sent', failed: 'Failed to send' };
+
+    function renderCancellationNoticeHTML(rows) {
+      if (!rows.length) {
+        return '<div class="cancellationNotice">No cancellation notification was found for this trip.</div>';
+      }
+      // Most recent attempt first; that's what the passenger actually saw
+      // (or is still waiting on). admin_reason/admin_cancelled_at are the
+      // same on every row here (joined in from admin_audit_log), so just
+      // reading them off the latest notification row is fine.
+      const latest = rows[0];
+      const statusLabel = NOTIF_STATUS_LABELS[latest.status] || latest.status;
+      const sentWhen = latest.sent_at ? new Date(latest.sent_at) : null;
+      // admin_reason is the admin's actual typed-in reason (admin_audit_log.
+      // reason) -- that's the part worth leading with. cancellation_
+      // notifications.message is just the static email template, so it only
+      // shows up as a fallback when there's no admin reason on file (e.g. a
+      // self-cancellation with no admin involved at all).
+      const mainText = latest.admin_reason
+        ? escapeHtml(latest.admin_reason)
+        : (latest.message ? escapeHtml(latest.message) : 'No message text was recorded for this notification.');
+      return `
+        <div class="cancellationNotice${latest.status === 'failed' ? ' failed' : ''}">
+          ${latest.admin_reason ? '<div style="font-weight:700; margin-bottom:4px;">Reason given by admin</div>' : ''}
+          ${mainText}
+          <div class="notifMeta">
+            Notification: ${statusLabel}${sentWhen ? ` · ${sentWhen.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+            ${latest.status === 'failed' && latest.failure_reason ? `<br/>Delivery issue: ${escapeHtml(latest.failure_reason)}` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    async function openCancellationModal(trip) {
+      const errorEl = document.getElementById('cancellationError');
+      const bodyEl = document.getElementById('cancellationBody');
+      errorEl.textContent = '';
+      document.getElementById('cancellationSummary').innerHTML = `
+        <div class="route">${trip.origin} → ${trip.destination}</div>
+        <div class="when">${new Date(trip.departure_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>
+      `;
+      bodyEl.innerHTML = '<div class="tripsLoading">Loading…</div>';
+      document.getElementById('cancellationModal').classList.remove('hidden');
+
+      const { data, error } = await supabaseClient.rpc('get_my_cancellation_notifications', {
+        p_reservation_id: trip.reservation_id,
+      });
+      if (error) {
+        bodyEl.innerHTML = '';
+        errorEl.textContent = 'Something went wrong loading this notification. Please try again.';
+        console.error(error);
+        return;
+      }
+      bodyEl.innerHTML = renderCancellationNoticeHTML(data || []);
+    }
+    function closeCancellationModal() {
+      document.getElementById('cancellationModal').classList.add('hidden');
+    }
+    document.getElementById('cancellationClose').addEventListener('click', closeCancellationModal);
+    document.getElementById('cancellationCloseBtn').addEventListener('click', closeCancellationModal);
+    document.getElementById('cancellationModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('cancellationModal')) closeCancellationModal();
     });
 
     // ---- Cancel a pending/confirmed trip, or view a confirmed trip's ticket (event delegation — cards re-render on every load) ----
@@ -3145,6 +3292,12 @@
       if (viewBtn) {
         const trip = lastTrips.find((t) => t.reservation_id === viewBtn.dataset.reservationId);
         if (trip) openTicketModal(tripToTicketData(trip));
+        return;
+      }
+      const viewCancellationBtn = e.target.closest('.viewCancellationBtn');
+      if (viewCancellationBtn) {
+        const trip = lastTrips.find((t) => t.reservation_id === viewCancellationBtn.dataset.reservationId);
+        if (trip) openCancellationModal(trip);
         return;
       }
 
@@ -3321,11 +3474,51 @@
     }
 
     async function loadManagerDashboard() {
-      const tasks = [loadManagerStatTiles(), loadManagerReservations()];
+      // The reservations list is no longer auto-loaded here -- with
+      // filtering, cancellations, and everything else now live, it was
+      // slow and noisy to always fetch a full unfiltered page on every
+      // dashboard visit. It now only loads when asked for (Show
+      // reservations / Apply filters / Reset), see showManagerReservations
+      // PlaceholderOrList() and the button handlers below.
+      resetManagerReservationsToPlaceholder();
+      const tasks = [loadManagerStatTiles()];
       if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadRevenueDashboard());
       if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadEmailQueue());
       if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadAuditLog());
       await Promise.all(tasks);
+    }
+
+    // ---- Manager sub-tabs (Reservations / Sales / Audit / Accounts) ----
+    // Pure show/hide -- every tab's data is already loaded by
+    // loadManagerDashboard() (reservations aside, which is loaded on demand
+    // below), so switching tabs never needs to re-fetch anything.
+    const MGR_TABS = ['reservations', 'sales', 'audit', 'accounts'];
+    function capitalizeTab(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
+    function switchMgrTab(tab) {
+      if (!MGR_TABS.includes(tab)) tab = 'reservations';
+      const btn = document.getElementById(`mgrTabBtn${capitalizeTab(tab)}`);
+      if (btn && btn.classList.contains('hidden')) tab = 'reservations';
+      MGR_TABS.forEach((t) => {
+        document.getElementById(`mgrTabPanel${capitalizeTab(t)}`).classList.toggle('hidden', t !== tab);
+        document.getElementById(`mgrTabBtn${capitalizeTab(t)}`).classList.toggle('active', t === tab);
+      });
+    }
+    document.getElementById('mgrTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.mgrTabBtn');
+      if (!btn || btn.classList.contains('hidden')) return;
+      switchMgrTab(btn.dataset.tab);
+    });
+
+    // ---- Reservations list: empty until explicitly shown (see mgrShowBtn/
+    // mgrClearBtn below), rather than always auto-loading every reservation
+    // on every dashboard visit. ----
+    function resetManagerReservationsToPlaceholder() {
+      document.getElementById('managerReservationsList').innerHTML =
+        '<div class="tripsEmpty">Click "Show reservations" or apply filters to load the list.</div>';
+      document.getElementById('managerResultsCount').textContent = '';
+      document.getElementById('managerError').textContent = '';
+      document.getElementById('managerPagination').classList.add('hidden');
+      managerOffset = 0;
     }
 
     // -----------------------------------------------------------------------
@@ -3582,6 +3775,18 @@
       managerFilters = { status: '', origin: '', destination: '', dateFrom: '', dateTo: '', search: '' };
       managerOffset = 0;
       loadManagerReservations();
+    });
+
+    // Reservations list is on-demand (see resetManagerReservationsToPlaceholder
+    // in loadManagerDashboard): "Show reservations" loads it with whatever
+    // filters are currently set, "Clear results" empties it back out.
+    document.getElementById('mgrShowBtn').addEventListener('click', () => {
+      readManagerFiltersFromForm();
+      managerOffset = 0;
+      loadManagerReservations();
+    });
+    document.getElementById('mgrClearBtn').addEventListener('click', () => {
+      resetManagerReservationsToPlaceholder();
     });
 
     document.getElementById('mgrPrevBtn').addEventListener('click', () => {
@@ -3908,7 +4113,7 @@
       }
       closeAdminCancelModal();
       const tasks = [loadManagerStatTiles(), loadManagerReservations(), loadAuditLog(), loadEmailQueue()];
-      if (!document.getElementById('mgrRevenuePanel').classList.contains('hidden')) tasks.push(loadRevenueDashboard());
+      if (!document.getElementById('mgrTabBtnSales').classList.contains('hidden')) tasks.push(loadRevenueDashboard());
       await Promise.all(tasks);
     });
 
@@ -4128,8 +4333,10 @@
       document.getElementById('navManagerLink').classList.add('hidden');
       document.getElementById('navMobileLogoutItem').classList.add('hidden');
       document.getElementById('managerSectionWrap').classList.add('hidden');
-      document.getElementById('mgrRolePanel').classList.add('hidden');
-      document.getElementById('auditLogPanel').classList.add('hidden');
+      document.getElementById('mgrTabBtnAccounts').classList.add('hidden');
+      document.getElementById('mgrTabBtnSales').classList.add('hidden');
+      document.getElementById('mgrTabBtnAudit').classList.add('hidden');
+      switchMgrTab('reservations');
       document.getElementById('auditLogBody').innerHTML = '';
       closeAdminCancelModal();
       closeRebookModal();
