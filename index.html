@@ -144,7 +144,7 @@
   @media (max-width: 820px) {
     .navLinks { display: none; }
     .navHamburger { display: flex; }
-    /* Tabs the header can't fit at mobile widths (Flights, Destinations, My
+    /* Tabs the header can't fit at mobile widths (Flights, Flight status, My
        Trips, Account, Manager) move into a dropdown opened by the hamburger,
        instead of just disappearing with no way to reach them. */
     .navLinks.mobileOpen {
@@ -709,7 +709,6 @@
       </div>
       <ul class="navLinks" id="navLinksList">
         <li><a href="#search" data-page="home">Flights</a></li>
-        <li><a href="#results" data-page="home">Destinations</a></li>
         <li><a href="#status-lookup" data-page="status">Flight status</a></li>
         <li><a href="#trips" data-page="trips">My Trips</a></li>
         <li><a href="#account" data-page="account">Account</a></li>
@@ -1451,7 +1450,7 @@
     // intercepted below instead of doing its native anchor jump.
     // -----------------------------------------------------------------------
     const PAGE_IDS = { home: 'pageHome', status: 'pageStatus', account: 'pageAccount', trips: 'pageTrips', manager: 'pageManager' };
-    const PAGE_FOCUS_ANCHOR = { '#results': 'results' }; // scroll target within the page, keyed by the link's href
+    const PAGE_FOCUS_ANCHOR = {}; // scroll target within the page, keyed by the link's href (currently unused -- no nav link needs a same-page scroll target)
 
     function showPage(page, focusAnchorId) {
       // Manager is UI-gated the same way the nav link/section already are --
@@ -2708,7 +2707,7 @@
     document.getElementById('navMobileLogout').addEventListener('click', () => { closeMobileNav(); handleLogout(); });
 
     // ---- Mobile nav dropdown (hamburger) ----
-    // Below 820px .navLinks (Flights/Destinations/My Trips/Account/Manager)
+    // Below 820px .navLinks (Flights/Flight status/My Trips/Account/Manager)
     // has nowhere to go in the header row, so it's hidden and re-shown as a
     // dropdown from this button instead of just disappearing with no way to
     // reach those pages.
@@ -2722,7 +2721,7 @@
       const isOpen = navLinksList.classList.toggle('mobileOpen');
       navHamburger.setAttribute('aria-expanded', String(isOpen));
     });
-    // Tapping any Flights/Destinations/My Trips/Account/Manager link closes
+    // Tapping any Flights/Flight status/My Trips/Account/Manager link closes
     // the dropdown -- otherwise it stays open, covering the page you just
     // navigated to.
     navLinksList.addEventListener('click', (e) => {
