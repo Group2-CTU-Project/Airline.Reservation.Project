@@ -2854,8 +2854,13 @@
       document.getElementById('managerSectionWrap').classList.toggle('hidden', !canViewManagerDashboard);
       document.getElementById('mgrRolePanel').classList.toggle('hidden', !canSeeRolePanel);
       document.getElementById('mgrRevenuePanel').classList.toggle('hidden', !canSeeRevenuePanel);
-      // S2-07/PB-14: audit log is admin-only (get_admin_audit_log() enforces it).
-      document.getElementById('auditLogPanel').classList.toggle('hidden', currentUserRole !== 'admin');
+      // Audit log: originally admin-only, now admin-or-manager so managers
+      // can monitor admin cancellations too (get_admin_audit_log() widened
+      // server-side -- see 20260930010000_widen_audit_log_to_manager.sql).
+      // Managers still can't cancel a booking themselves (adminCancelBtn
+      // stays admin-only in renderManagerReservationCard) -- this only adds
+      // read access to the trail of what admins have done.
+      document.getElementById('auditLogPanel').classList.toggle('hidden', !canViewManagerDashboard);
 
       await refreshPaymentOnFile();
       await loadMyTrips();
@@ -3319,7 +3324,7 @@
       const tasks = [loadManagerStatTiles(), loadManagerReservations()];
       if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadRevenueDashboard());
       if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadEmailQueue());
-      if (currentUserRole === 'admin') tasks.push(loadAuditLog());
+      if (currentUserRole === 'admin' || currentUserRole === 'manager') tasks.push(loadAuditLog());
       await Promise.all(tasks);
     }
 
@@ -4011,7 +4016,7 @@
       const bodyEl = document.getElementById('auditLogBody');
       const errorEl = document.getElementById('auditLogError');
       const paginationEl = document.getElementById('auditPagination');
-      if (currentUserRole !== 'admin') return;
+      if (currentUserRole !== 'admin' && currentUserRole !== 'manager') return;
       errorEl.textContent = '';
       bodyEl.innerHTML = '<tr><td colspan="5" class="tripsLoading">Loading audit log…</td></tr>';
       paginationEl.classList.add('hidden');
